@@ -384,10 +384,16 @@ fig.update_layout(
 st.plotly_chart(fig, use_container_width=True)
 
 st.subheader("📉 Kinnisvara hinna muutus maakonniti")
+# Uus hoone liigi valik ainult selle graafiku jaoks
+hoonevalik_line = st.selectbox(
+    "Vali hoone liik selle graafiku jaoks:",
+    options=kv_thi["Hoone_liik"].unique().tolist() + ["Kokku"],
+    index=0
+)
 
 # Filter hoone liigi alusel
-if hoonevalik != "Kokku":
-    filtered_line = kv_thi[kv_thi["Hoone_liik"] == hoonevalik]
+if hoonevalik_line != "Kokku":
+    filtered_line = kv_thi[kv_thi["Hoone_liik"] == hoonevalik_line]
 else:
     filtered_line = kv_thi.copy()
 
@@ -406,7 +412,7 @@ fig_line = px.line(
     color="Maakond",
     markers=True,
     labels={"Keskmine_pinnaühikuhind": "€/m²", "quarter": "Kvartal"},
-    title=f"{hoonevalik.replace('_', ' ').capitalize()} keskmise ruutmeetri hinna muutus ajas maakonniti"
+    title=f"{hoonevalik_line.replace('_', ' ').capitalize()} keskmise ruutmeetri hinna muutus ajas maakonniti"
 )
 
 fig_line.update_layout(xaxis_tickangle=-45)
