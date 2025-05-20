@@ -418,3 +418,60 @@ fig_line = px.line(
 fig_line.update_layout(xaxis_tickangle=-45)
 
 st.plotly_chart(fig_line, use_container_width=True)
+
+st.subheader("📈 Tööjõuturu näitaja trendid maakonniti")
+
+# Näidiku valik ainult trendigraafikule
+trend_naidikud = [
+    "netosissetulek", "hoivatute_arv", "mitteaktiivsed",
+    "toohive_maar", "toojoud_ja_mitteaktiivsed", "toojoud_arv",
+    "toojous_osalemine", "tootuse_maar", "tootute_arv", "leibkondade_arv"
+]
+
+valitud_trend_naidik = st.selectbox(
+    "Vali trendigraafiku näitaja",
+    trend_naidikud,
+    index=trend_naidikud.index(valitud_naidik) if valitud_naidik in trend_naidikud else 0
+)
+
+# Maakondade valik koos "Kõik maakonnad" valikuga
+maakonnad = sorted(total_data["Maakond"].unique())
+maakonnad_valikud = ["Kõik maakonnad"] + maakonnad
+
+valitud_maakond = st.selectbox(
+    "Vali maakond trendigraafikule",
+    maakonnad_valikud,
+    index=0
+)
+
+if valitud_maakond == "Kõik maakonnad":
+    trend_df = total_data[
+        (total_data[valitud_trend_naidik].notna())
+    ][["Aasta", "Maakond", valitud_trend_naidik]].copy()
+else:
+    trend_df = total_data[
+        (total_data["Maakond"] == valitud_maakond) &
+        (total_data[valitud_trend_naidik].notna())
+    ][["Aasta", "Maakond", valitud_trend_naidik]].copy()
+
+trend_grouped = (
+    trend_df.groupby(["Aasta", "Maakond"], as_index=False)[valitud_trend_naidik]
+    .mean()
+    .sort_values("Aasta")
+)
+
+# Näitaja nimi pealkirja jaoks ilusamaks
+naidiku_nimi = valitud_trend_naidik.replace("_", " ").capitalize()
+
+fig_trend = px.line(
+    trend_grouped,
+    x="Aasta",
+    y=valitud_trend_naidik,
+    color="Maakond",
+    markers=True,
+    labels={valitud_trend_naidik: naidiku_nimi, "Aasta": "Aasta"},
+    title=f"{naidiku_nimi} trendid {valitud_maakond.lower()}"
+)
+fig_trend.update_layout(xaxis=dict(dtick=1))
+
+st.plotly_chart(fig_trend, use_container_width=True)
