@@ -5,6 +5,9 @@ import plotly.express as px
 import geopandas as gpd
 import plotly.graph_objects as go
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 # Defineeri andmete asukoht
 data_dir = "Data"
@@ -125,7 +128,7 @@ col1, col2, col3 = st.columns(3)
 
 # THI
 with col1:
-    st.subheader("Tarbijahinnaindeks (THI)")
+    st.subheader("Tarbijahinna-indeks (THI)")
     st.markdown(f"### **{changes['thi']['current']}**")
     st.markdown("Muutus eelmise kvartaliga")
     st.markdown(format_change(changes['thi']['prev_q']))
@@ -305,10 +308,34 @@ fig.update_layout(
 # Kuvame kaardi Streamlitis
 st.plotly_chart(fig, use_container_width=True)
 
-# 📈 Visualiseerime THI, brutokuupalga ja eluasemehinnaindeksi muutust ajas
-import plotly.graph_objects as go
+# Eeldame, et total_data sisaldab veergu "keskmine_ruutmeetrihind"
+valitud_aasta = st.selectbox("Vali aasta korrelatsiooni vaatamiseks", sorted(total_data["Aasta"].unique()))
 
-st.subheader("Netosissetulek võrreldes THI ja eluaseme hinnaindeksiga")
+df_korr = total_data[total_data["Aasta"] == valitud_aasta][[
+    "Keskmine_pinnaühikuhind",
+    "netosissetulek", "hoivatute_arv", "mitteaktiivsed",
+        "toohive_maar", "toojoud_ja_mitteaktiivsed", "toojoud_arv",
+        "toojous_osalemine", "tootuse_maar", "tootute_arv", "leibkondade_arv"
+]].dropna()
+
+corr_matrix = df_korr.corr()
+
+fig, ax = plt.subplots(figsize=(12, 6))  # Suurem ja laiem maatriks
+
+sns.heatmap(
+    corr_matrix,
+    annot=True,
+    cmap="viridis",            
+    center=0,
+    annot_kws={"size": 8},     
+    linewidths=0.5             
+)
+
+st.pyplot(fig)
+
+
+# 📈 Visualiseerime THI, brutokuupalga ja eluasemehinnaindeksi muutust ajas
+st.subheader("Bruto kuupalga, tarbijahinnaindeksi ja eluaseme hinnaindeksi muutus ajas")
 
 # Kui sul on netosissetulek total_data-s, siis pead selle kõigepealt arvutama kvartalite lõikes:
 # Aga kui soovid lihtsalt avg_salary kasutada vasakul teljel, siis:
@@ -475,3 +502,100 @@ fig_trend = px.line(
 fig_trend.update_layout(xaxis=dict(dtick=1))
 
 st.plotly_chart(fig_trend, use_container_width=True)
+
+st.subheader("Tunnuste korrelatsioon ajas maakondade lõikes")
+
+columns = [
+    "Keskmine_pinnaühikuhind", "netosissetulek", "hoivatute_arv", "mitteaktiivsed",
+    "toohive_maar", "toojoud_ja_mitteaktiivsed", "toojoud_arv",
+    "toojous_osalemine", "tootuse_maar", "tootute_arv",
+    "leibkondade_arv", "avg_salary", "housing_index"
+]
+
+maakonnad = sorted(total_data["Maakond"].dropna().unique())
+maakond_valik = st.selectbox("Vali maakond", ["Kõik maakonnad"] + list(maakonnad))
+col1 = st.selectbox("Vali esimene tunnus", columns)
+col2 = st.selectbox("Vali teine tunnus", [col for col in columns if col != col1])
+
+# Graafiku joonistamine
+fig, ax = plt.subplots(figsize=(10, 5))
+
+if maakond_valik == "Kõik maakonnad":
+    grouped = total_data.groupby(["Maakond", "Aasta"])
+    korrelatsioonid = []
+    vigased_kokku = 0
+
+    for maakond in maakonnad:
+        maakond_data = total_data[total_data["Maakond"] == maakond]
+        yearly = []
+        vigased = 0
+
+        for aasta in sorted(maakond_data["Aasta"].unique()):
+            aasta_df = maakond_data[maakond_data["Aasta"] == aasta][[col1, col2]].dropna()
+            if len(aasta_df) >= 2:
+                corr = aasta_df[col1].corr(aasta_df[col2])
+                if pd.notnull(corr) and -1 <= corr <= 1:
+                    yearly.append((aasta, corr))
+                else:
+                    vigased += 1
+            else:
+                vigased += 1
+
+        if yearly:
+            df = pd.DataFrame(yearly, columns=["Aasta", "Korrelatsioon"])
+            ax.plot(df["Aasta"], df["Korrelatsioon"], label=maakond)
+
+        vigased_kokku += vigased
+
+    ax.set_title(f"{col1} ja {col2} korrelatsioon aastati – kõik maakonnad")
+    ax.set_ylabel("Pearsoni korrelatsioon")
+    ax.set_xlabel("Aasta")
+    ax.grid(True)
+    ax.axhline(0, color='gray', linestyle='--')
+    ax.legend(fontsize="small", bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    st.pyplot(fig)
+
+    if vigased_kokku > 0:
+        st.info(f"⚠️ Mõned aastad jäeti välja ({vigased_kokku} juhtumit), kuna korrelatsiooni ei saanud usaldusväärselt arvutada.")
+
+    st.markdown("""
+    Graafikul on näha, kuidas kahe tunnuse seos muutus ajas **igas maakonnas eraldi**.
+    Kui joon kõigub palju, võib seos olla ajas ebastabiilne – kui ta püsib stabiilselt kõrge, siis tegemist on tugeva ja püsiva seosega.
+    """)
+
+else:
+    maakond_data = total_data[total_data["Maakond"] == maakond_valik]
+    yearly_corr = []
+    vigased = 0
+
+    for aasta in sorted(maakond_data["Aasta"].unique()):
+        aasta_df = maakond_data[maakond_data["Aasta"] == aasta][[col1, col2]].dropna()
+        if len(aasta_df) >= 2:
+            corr = aasta_df[col1].corr(aasta_df[col2])
+            if pd.notnull(corr) and -1 <= corr <= 1:
+                yearly_corr.append({"Aasta": aasta, "Korrelatsioon": corr})
+            else:
+                vigased += 1
+        else:
+            vigased += 1
+
+    corr_df = pd.DataFrame(yearly_corr)
+    if not corr_df.empty:
+        ax.plot(corr_df["Aasta"], corr_df["Korrelatsioon"], marker='o', color='mediumblue')
+        ax.set_title(f"{col1} ja {col2} korrelatsioon maakonnas: {maakond_valik}")
+        ax.set_ylabel("Pearsoni korrelatsioon")
+        ax.set_xlabel("Aasta")
+        ax.grid(True)
+        ax.axhline(0, color='gray', linestyle='--')
+        ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+        st.pyplot(fig)
+
+        if vigased > 0:
+            st.info(f"⚠️ {vigased} aastat jäeti välja, kuna korrelatsiooni ei saanud usaldusväärselt arvutada.")
+
+        st.markdown(f"""
+        Aastate lõikes on näha, **kui tugevalt seonduvad tunnused {col1} ja {col2} maakonnas {maakond_valik}**.
+        """)
+    else:
+        st.warning("Selle maakonna ja tunnuste kombinatsiooni kohta ei leitud piisavalt andmeid korrelatsiooni arvutamiseks.")
