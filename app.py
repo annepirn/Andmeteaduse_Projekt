@@ -8,6 +8,14 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+from prophet import Prophet
+from sklearn.linear_model import LinearRegression
+import numpy as np
+from datetime import timedelta
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from itertools import product
 
 # Defineeri andmete asukoht
 data_dir = "Data"
@@ -247,7 +255,7 @@ naidikud = {
 }
 
 # Kuvame kaardid
-st.markdown(f"### Ülevaade: Mis on praegune seis tõõjõu turul? ({valitud_aasta})")
+st.markdown(f"### Ülevaade: Mis on praegune seis tööjõu turul? ({valitud_aasta})")
 cols = st.columns(4)
 
 for idx, (nimi, veeru_nimi) in enumerate(naidikud.items()):
@@ -599,3 +607,218 @@ else:
         """)
     else:
         st.warning("Selle maakonna ja tunnuste kombinatsiooni kohta ei leitud piisavalt andmeid korrelatsiooni arvutamiseks.")
+
+
+# === VALIK: Mida prognoosime ===
+target = st.selectbox("Vali ennustatav näitaja:", ['thi', 'avg_salary', 'housing_index'])
+
+# Andmete ettevalmistus
+df = thi.copy()  # sinu eelnevalt töödeldud data
+df = df.reset_index()
+df['quarter'] = pd.to_datetime(df['quarter'])  # veendu, et kuupäev
+df = df[['quarter', target]]
+df.columns = ['ds', 'y']
+
+# --- PROPHET ---
+model_prophet = Prophet()
+model_prophet.fit(df)
+
+future = model_prophet.make_future_dataframe(periods=4, freq='Q')
+forecast_prophet = model_prophet.predict(future)
+
+# --- LINEAARNE REGRESSIOON ---
+df['ordinal'] = df['ds'].map(pd.Timestamp.toordinal)
+X = df['ordinal'].values.reshape(-1, 1)
+y = df['y'].values
+
+lin_model = LinearRegression()
+lin_model.fit(X, y)
+
+future_dates = pd.date_range(start=df['ds'].max() + pd.offsets.QuarterEnd(), periods=4, freq='Q')
+future_ordinals = future_dates.map(pd.Timestamp.toordinal).values.reshape(-1, 1)
+
+y_pred = lin_model.predict(future_ordinals)
+
+# --- Usalduspiirid (lihtsustatud lineaarse mudeli puhul) ---
+from sklearn.metrics import mean_squared_error
+import scipy.stats as stats
+
+y_train_pred = lin_model.predict(X)
+mse = mean_squared_error(y, y_train_pred)
+se = np.sqrt(mse)
+
+t_val = stats.t.ppf(0.975, df=len(X) - 2)  # 95% usaldus
+margin = t_val * se
+
+y_pred_upper = y_pred + margin
+y_pred_lower = y_pred - margin
+
+# === GRAAFIKUD KÕRVUTI ===
+col1, col2 = st.columns(2)
+
+# Prophet plot
+with col1:
+    st.markdown("#### Prophet prognoos")
+    fig1 = model_prophet.plot(forecast_prophet)
+    fig1.set_size_inches(8, 4)  # fikseeri suurus (laius x kõrgus tollides)
+    st.pyplot(fig1)
+
+# Linear regression plot
+with col2:
+    st.markdown("#### Lineaarne regressioon")
+    fig2, ax2 = plt.subplots(figsize=(6, 4))  # sama suurus
+    ax2.plot(df['ds'], df['y'], label='Ajaloolised andmed')
+    ax2.plot(future_dates, y_pred, label='Prognoos', color='green')
+    ax2.fill_between(future_dates, y_pred_lower, y_pred_upper, color='green', alpha=0.2, label='95% usalduspiir')
+    ax2.set_title('Lineaarse regressiooni prognoos')
+    ax2.legend()
+    ax2.grid(True)
+    st.pyplot(fig2)
+
+# Võiks tulla ka tööjõuturu näitajate prognoos
+
+
+st.title("Kinnisvara ruutmeetrihinna prognoos 2025 – Eesti maakondades")
+
+# --- Hoone_liik valik ---
+hoone_liigid = total_data['Hoone_liik'].unique().tolist()
+hoone_liigid.append("Kokku")  # lisame "Kokku" valiku
+
+valitud_hoone = st.selectbox("Vali hooneliik", hoone_liigid)
+
+# --- Andmete ettevalmistus ---
+features = [
+    'toohive_maar', 'tootuse_maar', 'leibkondade_arv',
+    'avg_salary', 'housing_index', 'THI'
+]
+target = 'Keskmine_pinnaühikuhind'
+
+df_model = total_data.dropna(subset=features + [target, 'Hoone_liik', 'Maakond', 'Aasta']).copy()
+
+latest_year = df_model['Aasta'].max()
+future_year = 2025
+
+if valitud_hoone != "Kokku":
+    # Kui valiti konkreetne hooneliik, filtreeri tavaliselt
+    df_model_filtered = df_model[df_model['Hoone_liik'] == valitud_hoone]
+    
+    future_data = df_model_filtered[df_model_filtered['Aasta'] == latest_year].copy()
+    future_data['Aasta'] = future_year
+
+    # Kategooriate kodeerimine
+    le_hoone = LabelEncoder()
+    le_maakond = LabelEncoder()
+    df_model_filtered['Hoone_liik_enc'] = le_hoone.fit_transform(df_model_filtered['Hoone_liik'])
+    df_model_filtered['Maakond_enc'] = le_maakond.fit_transform(df_model_filtered['Maakond'])
+    future_data['Hoone_liik_enc'] = le_hoone.transform(future_data['Hoone_liik'])
+    future_data['Maakond_enc'] = le_maakond.transform(future_data['Maakond'])
+
+    # Mudel
+    features_enc = features + ['Hoone_liik_enc', 'Maakond_enc', 'Aasta']
+    X_train = df_model_filtered[features_enc]
+    y_train = df_model_filtered[target]
+    X_future = future_data[features_enc]
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_future_scaled = scaler.transform(X_future)
+
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train_scaled, y_train)
+
+    future_data['Predicted_Keskmine_pinnaühikuhind'] = model.predict(X_future_scaled)
+
+    # Hinnamuutuste arvutus
+    agg_cols = ['Maakond', 'Hoone_liik']
+    hist_means = df_model_filtered[df_model_filtered['Aasta'] == latest_year].groupby(agg_cols)[target].mean().reset_index()
+    pred_means = future_data.groupby(agg_cols)['Predicted_Keskmine_pinnaühikuhind'].mean().reset_index()
+
+    df_compare = hist_means.merge(pred_means, on=agg_cols, how='inner')
+    df_compare['Hinna_muutus'] = df_compare['Predicted_Keskmine_pinnaühikuhind'] - df_compare[target]
+    df_compare['Protsent_muutus'] = 100 * df_compare['Hinna_muutus'] / df_compare[target]
+
+else:
+    # Kui valiti "Kokku", siis arvutame kaalutud keskmise maakonna kaupa
+
+    # Kõik andmed viimase aasta kohta
+    hist_latest = df_model[df_model['Aasta'] == latest_year].copy()
+    # Prognoosi tegemiseks tuleb kasutada kõiki hooneliike korraga
+
+    # Kategooriate kodeerimine kõigi hooneliikide ja maakondade jaoks
+    le_hoone = LabelEncoder()
+    le_maakond = LabelEncoder()
+    df_model['Hoone_liik_enc'] = le_hoone.fit_transform(df_model['Hoone_liik'])
+    df_model['Maakond_enc'] = le_maakond.fit_transform(df_model['Maakond'])
+    
+    future_data = hist_latest.copy()
+    future_data['Aasta'] = future_year
+    future_data['Hoone_liik_enc'] = le_hoone.transform(future_data['Hoone_liik'])
+    future_data['Maakond_enc'] = le_maakond.transform(future_data['Maakond'])
+
+    # Mudel treenimine kõigi hooneliikide ja maakondadega koos
+    features_enc = features + ['Hoone_liik_enc', 'Maakond_enc', 'Aasta']
+    X_train = df_model[features_enc]
+    y_train = df_model[target]
+    X_future = future_data[features_enc]
+
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_future_scaled = scaler.transform(X_future)
+
+    model = RandomForestRegressor(n_estimators=100, random_state=42)
+    model.fit(X_train_scaled, y_train)
+
+    future_data['Predicted_Keskmine_pinnaühikuhind'] = model.predict(X_future_scaled)
+
+    # Arvutame kaalutud keskmise maakonna tasandil
+
+    # kaalud on ajalooline keskmine pindala või hulk - siin lihtsuse mõttes kasutame lihtsalt ridade arvu (või võid lisada tegeliku kaalu)
+    # Kuna sul on ainult ruutmeetri hind, kasutame lihtsalt keskmist (kaaludega saab ka lisada)
+
+    # Ajaloolised keskmised
+    hist_means = hist_latest.groupby('Maakond')[target].mean().reset_index()
+    # Prognoos
+    pred_means = future_data.groupby('Maakond')['Predicted_Keskmine_pinnaühikuhind'].mean().reset_index()
+
+    df_compare = hist_means.merge(pred_means, on='Maakond', how='inner')
+
+    df_compare['Hinna_muutus'] = df_compare['Predicted_Keskmine_pinnaühikuhind'] - df_compare[target]
+    df_compare['Protsent_muutus'] = 100 * df_compare['Hinna_muutus'] / df_compare[target]
+
+    df_compare['Hoone_liik'] = 'Kokku'  # Lisa veerg "Kokku"
+
+# --- Kõik maakonnad + täitmine ---
+maakonnad = geo_df['MNIMI'].unique()
+if valitud_hoone == "Kokku":
+    hoone_liigid_unik = ['Kokku']
+else:
+    hoone_liigid_unik = [valitud_hoone]
+
+full_combinations = pd.DataFrame(product(maakonnad, hoone_liigid_unik), columns=['Maakond', 'Hoone_liik'])
+df_full = full_combinations.merge(df_compare, on=['Maakond', 'Hoone_liik'], how='left')
+
+# Täida puuduvaid väärtusi Eesti keskmisega
+mean_pct_change = df_compare['Protsent_muutus'].mean()
+mean_hist_price = df_compare[target].mean()
+
+df_full['Protsent_muutus'] = df_full['Protsent_muutus'].fillna(mean_pct_change)
+df_full[target] = df_full[target].fillna(mean_hist_price)
+df_full['Hinna_muutus'] = df_full[target] * df_full['Protsent_muutus'] / 100
+df_full['Predicted_Keskmine_pinnaühikuhind'] = df_full[target] + df_full['Hinna_muutus']
+
+# --- Filtreerimine kaardiks ---
+df_plot = df_full[df_full['Hoone_liik'] == valitud_hoone]
+gdf_plot = geo_df.merge(df_plot, left_on='MNIMI', right_on='Maakond', how='left')
+
+# --- Kaardi joonistamine ---
+fig, ax = plt.subplots(1, 1, figsize=(10, 12))
+gdf_plot.plot(column='Protsent_muutus', cmap='RdYlGn', legend=True, ax=ax,
+              legend_kwds={'label': "Ruutmeetri hinna muutus (%) aastani 2025",
+                           'orientation': "vertical"},
+              missing_kwds={"color": "lightgrey", "label": "Andmed puuduvad"})
+
+ax.set_title(f'Hinnamuutuse prognoos maakonniti hooneliigi "{valitud_hoone}" kohta aastaks {future_year}')
+ax.axis('off')
+st.pyplot(fig)
+
+
