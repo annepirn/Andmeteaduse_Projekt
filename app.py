@@ -16,6 +16,10 @@ import numpy as np
 from datetime import timedelta
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from itertools import product
+from sklearn.metrics import mean_squared_error
+import scipy.stats as stats
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+import statsmodels.api as sm
 
 # Defineeri andmete asukoht
 data_dir = "Data"
@@ -129,6 +133,7 @@ merged = geo_df.merge(df_map, how="left", left_on="Maakond", right_on="Maakond")
 
 # --- DASHBOARD ---
 st.title("📊 Kinnisvara dashboard – Ülevaade")
+st.markdown(f"## Hetkeolukord")
 st.markdown(f"### Ülevaade: Mis on praegune seis makromajandusnäitajates? **{selected_q}**")
 
 # 3 veergu: THI, brutopalk, hinnaindeks
@@ -255,7 +260,7 @@ naidikud = {
 }
 
 # Kuvame kaardid
-st.markdown(f"### Ülevaade: Mis on praegune seis tööjõu turul? ({valitud_aasta})")
+st.markdown(f"## Ülevaade: Mis on praegune seis tööjõu turul? ({valitud_aasta})")
 cols = st.columns(4)
 
 for idx, (nimi, veeru_nimi) in enumerate(naidikud.items()):
@@ -341,6 +346,7 @@ sns.heatmap(
 
 st.pyplot(fig)
 
+st.markdown(f"## Muutused ajas - trendid")
 
 # 📈 Visualiseerime THI, brutokuupalga ja eluasemehinnaindeksi muutust ajas
 st.subheader("Bruto kuupalga, tarbijahinnaindeksi ja eluaseme hinnaindeksi muutus ajas")
@@ -608,6 +614,8 @@ else:
     else:
         st.warning("Selle maakonna ja tunnuste kombinatsiooni kohta ei leitud piisavalt andmeid korrelatsiooni arvutamiseks.")
 
+st.markdown(f"## Prognoosid tulevikuks")
+st.subheader("Makromajandusnäitajate prognoos tulevikuks")
 
 # === VALIK: Mida prognoosime ===
 target = st.selectbox("Vali ennustatav näitaja:", ['thi', 'avg_salary', 'housing_index'])
@@ -640,9 +648,6 @@ future_ordinals = future_dates.map(pd.Timestamp.toordinal).values.reshape(-1, 1)
 y_pred = lin_model.predict(future_ordinals)
 
 # --- Usalduspiirid (lihtsustatud lineaarse mudeli puhul) ---
-from sklearn.metrics import mean_squared_error
-import scipy.stats as stats
-
 y_train_pred = lin_model.predict(X)
 mse = mean_squared_error(y, y_train_pred)
 se = np.sqrt(mse)
@@ -660,7 +665,7 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown("#### Prophet prognoos")
     fig1 = model_prophet.plot(forecast_prophet)
-    fig1.set_size_inches(8, 4)  # fikseeri suurus (laius x kõrgus tollides)
+    fig1.set_size_inches(5, 4)  # fikseeri suurus (laius x kõrgus tollides)
     st.pyplot(fig1)
 
 # Linear regression plot
@@ -676,9 +681,103 @@ with col2:
     st.pyplot(fig2)
 
 # Võiks tulla ka tööjõuturu näitajate prognoos
+st.subheader("Makromajandusnäitajate prognoos tulevikuks")
+
+if "total_data" not in globals():
+    st.error("Andmestik 'total_data' pole defineeritud. Palun lae andmed sisse.")
+    st.stop()
+
+# Valik: millise näitaja kohta prognoos luua
+prognoositavad_naidikud = [
+    "netosissetulek", "hoivatute_arv", "mitteaktiivsed",
+    "toohive_maar", "toojoud_ja_mitteaktiivsed", "toojoud_arv",
+    "toojous_osalemine", "tootuse_maar", "tootute_arv", "leibkondade_arv"
+]
+
+valitud_naidik = st.selectbox("Vali näitaja, mille kohta prognoosida", prognoositavad_naidikud)
+maakonnad_valikud = ["Kõik maakonnad"] + sorted(total_data["Maakond"].unique())
+valitud_maakond = st.selectbox("Vali maakond", maakonnad_valikud, key="maakond_valik")
+
+# Filter andmed
+if valitud_maakond == "Kõik maakonnad":
+    df = total_data[["Aasta", valitud_naidik]].dropna()
+    df = df.groupby("Aasta")[valitud_naidik].mean().reset_index()
+else:
+    df = total_data[(total_data["Maakond"] == valitud_maakond)][["Aasta", valitud_naidik]].dropna()
+    df = df.groupby("Aasta")[valitud_naidik].mean().reset_index()
+
+if df.empty:
+    st.warning("Valitud kombinatsioonil puuduvad andmed.")
+    st.stop()
+
+# Prognoos: mitu aastat edasi
+prognoos_aastaid = 5
+aastad_tulevikus = np.arange(df["Aasta"].max() + 1, df["Aasta"].max() + 1 + prognoos_aastaid)
+
+# --- Prognoos 1: Lineaarregressioon
+X = df["Aasta"].values.reshape(-1, 1)
+y = df[valitud_naidik].values
+lr_model = LinearRegression()
+lr_model.fit(X, y)
+future_X = aastad_tulevikus.reshape(-1, 1)
+lr_pred = lr_model.predict(future_X)
+
+# Lihtne usaldusintervall (nt ±1.96 * std jääk)
+residuals = y - lr_model.predict(X)
+std_err = np.std(residuals)
+lr_conf_int = 1.96 * std_err
+
+# --- Prognoos 2: SARIMA mudel (statsmodels)
+sarima_model = SARIMAX(df[valitud_naidik], order=(1,1,1), seasonal_order=(0,0,0,0))
+sarima_fit = sarima_model.fit(disp=False)
+sarima_forecast = sarima_fit.get_forecast(steps=prognoos_aastaid)
+sarima_pred = sarima_forecast.predicted_mean
+sarima_ci = sarima_forecast.conf_int()
+
+# --- Ühesuurune y-telg mõlemal graafikul
+y_all = np.concatenate([df[valitud_naidik].values, lr_pred, sarima_pred])
+y_min = y_all.min() * 0.95
+y_max = y_all.max() * 1.05
+
+# Kuvame kõrvuti graafikud
+col1, col2 = st.columns(2)
+
+with col1:
+    st.subheader("Lineaarregressiooni prognoos")
+    fig1, ax1 = plt.subplots()
+    ax1.plot(df["Aasta"], df[valitud_naidik], label="Ajalooline", marker='o')
+    ax1.plot(aastad_tulevikus, lr_pred, label="Prognoos", marker='x')
+    ax1.fill_between(aastad_tulevikus.flatten(),
+                     lr_pred - lr_conf_int,
+                     lr_pred + lr_conf_int,
+                     color='orange', alpha=0.3, label="±95% usaldus")
+    ax1.set_title(f"{valitud_naidik.replace('_',' ').capitalize()} - Lineaarregressioon")
+    ax1.set_xlabel("Aasta")
+    ax1.set_ylabel(valitud_naidik.replace('_',' ').capitalize())
+    ax1.set_ylim(y_min, y_max)
+    ax1.grid(True)
+    ax1.legend()
+    st.pyplot(fig1)
+
+with col2:
+    st.subheader("SARIMA prognoos")
+    fig2, ax2 = plt.subplots()
+    ax2.plot(df["Aasta"], df[valitud_naidik], label="Ajalooline", marker='o')
+    ax2.plot(aastad_tulevikus, sarima_pred, label="Prognoos", marker='x')
+    ax2.fill_between(aastad_tulevikus,
+                     sarima_ci.iloc[:, 0],
+                     sarima_ci.iloc[:, 1],
+                     color='lightblue', alpha=0.4, label="95% usaldus")
+    ax2.set_title(f"{valitud_naidik.replace('_',' ').capitalize()} - SARIMA")
+    ax2.set_xlabel("Aasta")
+    ax2.set_ylabel(valitud_naidik.replace('_',' ').capitalize())
+    ax2.set_ylim(y_min, y_max)
+    ax2.grid(True)
+    ax2.legend()
+    st.pyplot(fig2)
 
 
-st.title("Kinnisvara ruutmeetrihinna prognoos 2025 – Eesti maakondades")
+st.subheader("Kinnisvara ruutmeetrihinna prognoos 2025 – Eesti maakondades")
 
 # --- Hoone_liik valik ---
 hoone_liigid = total_data['Hoone_liik'].unique().tolist()
