@@ -47,6 +47,10 @@ def load_geo():
 hinnastatistika, kv_thi, thi, total_data = load_data()
 geo_df = load_geo()
 
+# --- DASHBOARD ---
+st.title("📊 Kinnisvara dashboard – Ülevaade")
+st.markdown("## Hetkeolukord")
+
 # 🧼 Andmetöötlus
 thi.columns = thi.columns.str.strip().str.lower()
 thi['quarter'] = thi['quarter'].str.strip()
@@ -56,9 +60,24 @@ thi = thi.sort_index()
 # 🎯 Kasutaja valib kvartali
 available_quarters = thi.index[thi.index.get_loc("2022Q1"):]  # alates 2022Q1
 selected_q = st.selectbox("Vali kvartal", available_quarters, index=len(available_quarters)-1)
-hoone_liigid = sorted(kv_thi["Hoone_liik"].dropna().unique())
-valikuga = ["Kokku"] + hoone_liigid
-hoonevalik = st.selectbox("Vali hoone liik", valikuga)
+
+# 🎯 Teisendusfunktsioon hoone liikidele
+def teisenda_hooneliik(kood):
+    if not isinstance(kood, str):
+        return kood
+    if "korter" in kood and "_" in kood:
+        osad = kood.split("_")
+        if len(osad) == 3:
+            return f"{osad[0]} {osad[1]}–{osad[2]}m²"
+    return kood.replace("_", " ").capitalize()
+
+# 🎯 Kasutajasõbralik valik hooneliikide jaoks
+hoone_liigid_raw = sorted(kv_thi["Hoone_liik"].dropna().unique())
+hooneliigid_map = {k: teisenda_hooneliik(k) for k in hoone_liigid_raw}
+reverse_map = {v: k for k, v in hooneliigid_map.items()}
+valikuga = ["Kokku"] + list(hooneliigid_map.values())
+hoonevalik_nice = st.selectbox("Vali hoone liik", valikuga)
+hoonevalik = reverse_map.get(hoonevalik_nice, "Kokku")
 
 # 📊 Funktsioon muutuste arvutamiseks
 def calc_percent(current, previous):
@@ -67,19 +86,10 @@ def calc_percent(current, previous):
     return round(((current - previous) / previous) * 100, 2)
 
 def calculate_changes(df, selected_q):
-    # kvartali komponendid
     prev_q = df.index[df.index.get_loc(selected_q) - 1] if df.index.get_loc(selected_q) > 0 else None
-    # Extract year and quarter number
     selected_year = int(selected_q[:4])
     selected_quarter = int(selected_q[-1])
-
-    if selected_quarter == 1:
-        # Kui Q1, siis aasta alguseks loeme eelmise aasta Q4
-        year_start = f"{selected_year - 1}Q4"
-    else:
-        # Kui Q2, Q3, Q4 → aasta algus = sama aasta Q1
-        year_start = f"{selected_year}Q1"
-
+    year_start = f"{selected_year - 1}Q4" if selected_quarter == 1 else f"{selected_year}Q1"
     prev_year = str(int(selected_q[:4]) - 1) + selected_q[4:]
 
     current = df.loc[selected_q] if selected_q in df.index else None
@@ -108,7 +118,6 @@ def calculate_changes(df, selected_q):
         }
     }
 
-
 # 🎨 Vormindus protsendimuutustele
 def format_change(value):
     if value is None:
@@ -120,26 +129,19 @@ def format_change(value):
 # 👉 Arvuta muutused
 changes = calculate_changes(thi, selected_q)
 
+# Andmete filtreerimine
 filtered = kv_thi[kv_thi["quarter"] == selected_q]
 if hoonevalik != "Kokku":
     filtered = filtered[filtered["Hoone_liik"] == hoonevalik]
-    df_map = filtered.groupby("Maakond", as_index=False)["Keskmine_pinnaühikuhind"].mean()
-else:
-    df_map = filtered.groupby("Maakond", as_index=False)["Keskmine_pinnaühikuhind"].mean()
+df_map = filtered.groupby("Maakond", as_index=False)["Keskmine_pinnaühikuhind"].mean()
 
 # Ühenda ruumiandmetega
 merged = geo_df.merge(df_map, how="left", left_on="Maakond", right_on="Maakond")
 
-
-# --- DASHBOARD ---
-st.title("📊 Kinnisvara dashboard – Ülevaade")
-st.markdown(f"## Hetkeolukord")
 st.markdown(f"### Ülevaade: Mis on praegune seis makromajandusnäitajates? **{selected_q}**")
 
-# 3 veergu: THI, brutopalk, hinnaindeks
+# 3 veergu
 col1, col2, col3 = st.columns(3)
-
-# THI
 with col1:
     st.subheader("Tarbijahinna-indeks (THI)")
     st.markdown(f"### **{changes['thi']['current']}**")
@@ -150,7 +152,6 @@ with col1:
     st.markdown("Muutus aasta tagusega")
     st.markdown(format_change(changes['thi']['prev_year']))
 
-# Brutopalk
 with col2:
     st.subheader("Keskmine brutopalk")
     st.markdown(f"### **{changes['avg_salary']['current']}**")
@@ -161,7 +162,6 @@ with col2:
     st.markdown("Muutus aasta tagusega")
     st.markdown(format_change(changes['avg_salary']['prev_year']))
 
-# Eluaseme hinnaindeks
 with col3:
     st.subheader("Eluaseme hinnaindeks")
     st.markdown(f"### **{changes['housing_index']['current']}**")
@@ -172,10 +172,10 @@ with col3:
     st.markdown("Muutus aasta tagusega")
     st.markdown(format_change(changes['housing_index']['prev_year']))
 
-hoone_nimi = hoonevalik.replace("_", " ").capitalize()
+# 🗺️ Kaardi pealkiri
+hoone_nimi = hoonevalik_nice if hoonevalik != "Kokku" else "Kõik hooneliigid"
 pealkiri_kv = f"{hoone_nimi} keskmine ruutmeetri hind maakonniti, {selected_q}"
 
-# Joonista kaart
 fig = px.choropleth_mapbox(
     merged,
     geojson=merged.geometry.__geo_interface__,
@@ -192,7 +192,7 @@ fig = px.choropleth_mapbox(
 
 fig.update_layout(
     title_text=pealkiri_kv,
-    title_x=0.3,  # Keskenda pealkiri
+    title_x=0.3,
     margin={"r": 0, "t": 40, "l": 0, "b": 0}
 )
 
@@ -209,14 +209,22 @@ else:
     default_index = len(aastad) - 1  # viimane saadaval olev aasta
 
 valitud_aasta = st.selectbox("Vali aasta", aastad, index=default_index)
-valitud_naidik = st.selectbox(
-    "Vali näitaja kaardile kuvamiseks",
-    [
-        "netosissetulek", "hoivatute_arv", "mitteaktiivsed",
-        "toohive_maar", "toojoud_ja_mitteaktiivsed", "toojoud_arv",
-        "toojous_osalemine", "tootuse_maar", "tootute_arv", "leibkondade_arv"
-    ]
-)
+
+naidikud = {
+    "Netosissetulek": "netosissetulek",
+    "Hõivatute arv": "hoivatute_arv",
+    "Mitteaktiivsete arv": "mitteaktiivsed",
+    "Tööhõive määr": "toohive_maar",
+    "Tööjõud ja mitteaktiivsed": "toojoud_ja_mitteaktiivsed",
+    "Tööjõu arv": "toojoud_arv",
+    "Tööjõus osalemise määr": "toojous_osalemine",
+    "Töötuse määr": "tootuse_maar",
+    "Töötute arv": "tootute_arv",
+    "Leibkondade arv": "leibkondade_arv"
+}
+
+kuvatav_valik = st.selectbox("Vali näitaja kaardile kuvamiseks", list(naidikud.keys()))
+valitud_naidik = naidikud[kuvatav_valik]
 
 # Kontrolli, kas eelmise aasta andmed on olemas
 eelmine_aasta = valitud_aasta - 1
@@ -423,16 +431,42 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
-
 st.subheader("📉 Kinnisvara hinna muutus maakonniti")
-# Uus hoone liigi valik ainult selle graafiku jaoks
-hoonevalik_line = st.selectbox(
+
+# --- Kasutajasõbralikud nimed ---
+hoone_liik_map = {
+    "korter_10_29.99": "Korter 10–29.99m²",
+    "korter_30_40.99": "Korter 30–40.99m²",
+    "korter_41_54.99": "Korter 41–54.99m²",
+    "korter_55_69.99": "Korter 55–69.99m²",
+    "korter_70_249.99": "Korter 70–249.99m²",
+    "Elamu": "Elamu",
+    "Muu": "Muu eluruum",
+    "Suvila": "Suvila",
+    "Kokku": "Kokku"
+}
+# Vastupidine sõnastik kuvamisnime -> kood
+hoone_liik_reverse_map = {v: k for k, v in hoone_liik_map.items()}
+
+# Loome valiku kuvamisnimede põhjal
+hoone_liigid_raw = kv_thi["Hoone_liik"].unique().tolist()
+hoone_liigid_raw.append("Kokku")
+hoone_liigid_display = [hoone_liik_map.get(x, x) for x in hoone_liigid_raw]
+
+# Leiame indeksi "Kokku" vaikevalikuks
+kokku_index = hoone_liigid_display.index("Kokku")
+
+# Kuvame kasutajale valiku
+hoonevalik_display = st.selectbox(
     "Vali hoone liik selle graafiku jaoks:",
-    options=kv_thi["Hoone_liik"].unique().tolist() + ["Kokku"],
-    index=0
+    options=hoone_liigid_display,
+    index=kokku_index
 )
 
-# Filter hoone liigi alusel
+# Leiame vastava toorandmete väärtuse
+hoonevalik = hoone_liik_reverse_map[hoonevalik_display]
+
+# --- Filtreerime valiku alusel ---
 if hoonevalik != "Kokku":
     filtered_line = kv_thi[kv_thi["Hoone_liik"] == hoonevalik]
 else:
@@ -445,7 +479,7 @@ grouped = (
     .sort_values("quarter")
 )
 
-# Loome joondiagrammi, kus iga maakond on eraldi joon
+# Loome joondiagrammi
 fig_line = px.line(
     grouped,
     x="quarter",
@@ -453,92 +487,50 @@ fig_line = px.line(
     color="Maakond",
     markers=True,
     labels={"Keskmine_pinnaühikuhind": "€/m²", "quarter": "Kvartal"},
-    title=f"{hoonevalik.replace('_', ' ').capitalize()} keskmise ruutmeetri hinna muutus ajas maakonniti"
+    title=f"{hoonevalik_display} keskmise ruutmeetri hinna muutus ajas maakonniti"
 )
 
 fig_line.update_layout(xaxis_tickangle=-45)
-
 st.plotly_chart(fig_line, use_container_width=True)
 
-st.subheader("📈 Tööjõuturu näitaja trendid maakonniti")
 
-# Näidiku valik ainult trendigraafikule
-trend_naidikud = [
-    "netosissetulek", "hoivatute_arv", "mitteaktiivsed",
-    "toohive_maar", "toojoud_ja_mitteaktiivsed", "toojoud_arv",
-    "toojous_osalemine", "tootuse_maar", "tootute_arv", "leibkondade_arv"
-]
-
-valitud_trend_naidik = st.selectbox(
-    "Vali trendigraafiku näitaja",
-    trend_naidikud,
-    index=trend_naidikud.index(valitud_naidik) if valitud_naidik in trend_naidikud else 0
-)
-
-# Maakondade valik koos "Kõik maakonnad" valikuga
-maakonnad = sorted(total_data["Maakond"].unique())
-maakonnad_valikud = ["Kõik maakonnad"] + maakonnad
-
-valitud_maakond = st.selectbox(
-    "Vali maakond trendigraafikule",
-    maakonnad_valikud,
-    index=0
-)
-
-if valitud_maakond == "Kõik maakonnad":
-    trend_df = total_data[
-        (total_data[valitud_trend_naidik].notna())
-    ][["Aasta", "Maakond", valitud_trend_naidik]].copy()
-else:
-    trend_df = total_data[
-        (total_data["Maakond"] == valitud_maakond) &
-        (total_data[valitud_trend_naidik].notna())
-    ][["Aasta", "Maakond", valitud_trend_naidik]].copy()
-
-trend_grouped = (
-    trend_df.groupby(["Aasta", "Maakond"], as_index=False)[valitud_trend_naidik]
-    .mean()
-    .sort_values("Aasta")
-)
-
-# Näitaja nimi pealkirja jaoks ilusamaks
-naidiku_nimi = valitud_trend_naidik.replace("_", " ").capitalize()
-
-fig_trend = px.line(
-    trend_grouped,
-    x="Aasta",
-    y=valitud_trend_naidik,
-    color="Maakond",
-    markers=True,
-    labels={valitud_trend_naidik: naidiku_nimi, "Aasta": "Aasta"},
-    title=f"{naidiku_nimi} trendid {valitud_maakond.lower()}"
-)
-fig_trend.update_layout(xaxis=dict(dtick=1))
-
-st.plotly_chart(fig_trend, use_container_width=True)
-
-st.subheader("Tunnuste korrelatsioon ajas maakondade lõikes")
-
-columns = [
-    "Keskmine_pinnaühikuhind", "netosissetulek", "hoivatute_arv", "mitteaktiivsed",
-    "toohive_maar", "toojoud_ja_mitteaktiivsed", "toojoud_arv",
-    "toojous_osalemine", "tootuse_maar", "tootute_arv",
-    "leibkondade_arv", "avg_salary", "housing_index"
-]
-
+# Eeldus: total_data on juba laaditud ja puhastatud
 maakonnad = sorted(total_data["Maakond"].dropna().unique())
-maakond_valik = st.selectbox("Vali maakond", ["Kõik maakonnad"] + list(maakonnad))
-col1 = st.selectbox("Vali esimene tunnus", columns)
-col2 = st.selectbox("Vali teine tunnus", [col for col in columns if col != col1])
+st.subheader("📊 Tunnuste korrelatsioon ajas maakondade lõikes")
 
-# Graafiku joonistamine
+# Tõlgendatavad nimetused
+columns_dict = {
+    "Keskmine_pinnaühikuhind": "Keskmine pinnaühikuhind",
+    "netosissetulek": "Netosissetulek",
+    "hoivatute_arv": "Hõivatute arv",
+    "mitteaktiivsed": "Mitteaktiivsete arv",
+    "toohive_maar": "Tööhõive määr",
+    "toojoud_ja_mitteaktiivsed": "Tööjõud + mitteaktiivsed",
+    "toojoud_arv": "Tööjõu arv",
+    "toojous_osalemine": "Tööjõus osalemise määr",
+    "tootuse_maar": "Töötuse määr",
+    "tootute_arv": "Töötute arv",
+    "leibkondade_arv": "Leibkondade arv",
+    "avg_salary": "Keskmine palk",
+    "housing_index": "Eluaseme hinnaindeks"
+}
+
+columns_keys = list(columns_dict.keys())
+columns_labels = list(columns_dict.values())
+
+maakond_valik = st.selectbox("Vali maakond", ["Kõik maakonnad"] + list(maakonnad))
+
+col1_label = st.selectbox("Vali esimene tunnus", columns_labels)
+col2_label = st.selectbox("Vali teine tunnus", [l for l in columns_labels if l != col1_label])
+
+# Teisendame inimloetavad nimetused tagasi võtmeteks
+col1 = [k for k, v in columns_dict.items() if v == col1_label][0]
+col2 = [k for k, v in columns_dict.items() if v == col2_label][0]
+
 fig, ax = plt.subplots(figsize=(10, 5))
 
 if maakond_valik == "Kõik maakonnad":
-    grouped = total_data.groupby(["Maakond", "Aasta"])
-    korrelatsioonid = []
     vigased_kokku = 0
-
     for maakond in maakonnad:
         maakond_data = total_data[total_data["Maakond"] == maakond]
         yearly = []
@@ -548,7 +540,7 @@ if maakond_valik == "Kõik maakonnad":
             aasta_df = maakond_data[maakond_data["Aasta"] == aasta][[col1, col2]].dropna()
             if len(aasta_df) >= 2:
                 corr = aasta_df[col1].corr(aasta_df[col2])
-                if pd.notnull(corr) and -1 <= corr <= 1:
+                if pd.notnull(corr):
                     yearly.append((aasta, corr))
                 else:
                     vigased += 1
@@ -561,7 +553,7 @@ if maakond_valik == "Kõik maakonnad":
 
         vigased_kokku += vigased
 
-    ax.set_title(f"{col1} ja {col2} korrelatsioon aastati – kõik maakonnad")
+    ax.set_title(f"{col1_label} ja {col2_label} korrelatsioon aastati – kõik maakonnad")
     ax.set_ylabel("Pearsoni korrelatsioon")
     ax.set_xlabel("Aasta")
     ax.grid(True)
@@ -573,7 +565,7 @@ if maakond_valik == "Kõik maakonnad":
     if vigased_kokku > 0:
         st.info(f"⚠️ Mõned aastad jäeti välja ({vigased_kokku} juhtumit), kuna korrelatsiooni ei saanud usaldusväärselt arvutada.")
 
-    st.markdown("""
+    st.markdown(f"""
     Graafikul on näha, kuidas kahe tunnuse seos muutus ajas **igas maakonnas eraldi**.
     Kui joon kõigub palju, võib seos olla ajas ebastabiilne – kui ta püsib stabiilselt kõrge, siis tegemist on tugeva ja püsiva seosega.
     """)
@@ -587,7 +579,7 @@ else:
         aasta_df = maakond_data[maakond_data["Aasta"] == aasta][[col1, col2]].dropna()
         if len(aasta_df) >= 2:
             corr = aasta_df[col1].corr(aasta_df[col2])
-            if pd.notnull(corr) and -1 <= corr <= 1:
+            if pd.notnull(corr):
                 yearly_corr.append({"Aasta": aasta, "Korrelatsioon": corr})
             else:
                 vigased += 1
@@ -597,7 +589,7 @@ else:
     corr_df = pd.DataFrame(yearly_corr)
     if not corr_df.empty:
         ax.plot(corr_df["Aasta"], corr_df["Korrelatsioon"], marker='o', color='mediumblue')
-        ax.set_title(f"{col1} ja {col2} korrelatsioon maakonnas: {maakond_valik}")
+        ax.set_title(f"{col1_label} ja {col2_label} korrelatsioon maakonnas: {maakond_valik}")
         ax.set_ylabel("Pearsoni korrelatsioon")
         ax.set_xlabel("Aasta")
         ax.grid(True)
@@ -609,21 +601,29 @@ else:
             st.info(f"⚠️ {vigased} aastat jäeti välja, kuna korrelatsiooni ei saanud usaldusväärselt arvutada.")
 
         st.markdown(f"""
-        Aastate lõikes on näha, **kui tugevalt seonduvad tunnused {col1} ja {col2} maakonnas {maakond_valik}**.
+        Aastate lõikes on näha, **kui tugevalt seonduvad tunnused _{col1_label}_ ja _{col2_label}_ maakonnas _{maakond_valik}_**.
         """)
     else:
         st.warning("Selle maakonna ja tunnuste kombinatsiooni kohta ei leitud piisavalt andmeid korrelatsiooni arvutamiseks.")
 
-st.markdown(f"## Prognoosid tulevikuks")
+# Nähtavad nimed ja nende vastavus andmetulbanimedele
+naidiku_valikud = {
+    "Tarbijahinnaindeks": "thi",
+    "Keskmine brutokuupalk": "avg_salary",
+    "Eluaseme hinnaindeks": "housing_index"
+}
+
+st.markdown("## Prognoosid tulevikuks")
 st.subheader("Makromajandusnäitajate prognoos tulevikuks")
 
 # === VALIK: Mida prognoosime ===
-target = st.selectbox("Vali ennustatav näitaja:", ['thi', 'avg_salary', 'housing_index'])
+valitud_nimi = st.selectbox("Vali ennustatav näitaja:", list(naidiku_valikud.keys()))
+target = naidiku_valikud[valitud_nimi]
 
-# Andmete ettevalmistus
-df = thi.copy()  # sinu eelnevalt töödeldud data
+# --- Andmete ettevalmistus ---
+df = thi.copy()  # eelnevalt töödeldud DataFrame, mis sisaldab 'quarter' ja kõiki näitajaid
 df = df.reset_index()
-df['quarter'] = pd.to_datetime(df['quarter'])  # veendu, et kuupäev
+df['quarter'] = pd.to_datetime(df['quarter'])
 df = df[['quarter', target]]
 df.columns = ['ds', 'y']
 
@@ -647,12 +647,12 @@ future_ordinals = future_dates.map(pd.Timestamp.toordinal).values.reshape(-1, 1)
 
 y_pred = lin_model.predict(future_ordinals)
 
-# --- Usalduspiirid (lihtsustatud lineaarse mudeli puhul) ---
+# --- Usalduspiirid ---
 y_train_pred = lin_model.predict(X)
 mse = mean_squared_error(y, y_train_pred)
 se = np.sqrt(mse)
 
-t_val = stats.t.ppf(0.975, df=len(X) - 2)  # 95% usaldus
+t_val = stats.t.ppf(0.975, df=len(X) - 2)
 margin = t_val * se
 
 y_pred_upper = y_pred + margin
@@ -663,38 +663,50 @@ col1, col2 = st.columns(2)
 
 # Prophet plot
 with col1:
-    st.markdown("#### Prophet prognoos")
+    st.markdown(f"#### Prophet prognoos: {valitud_nimi}")
     fig1 = model_prophet.plot(forecast_prophet)
-    fig1.set_size_inches(5, 4)  # fikseeri suurus (laius x kõrgus tollides)
+    fig1.set_size_inches(5, 4)
     st.pyplot(fig1)
 
 # Linear regression plot
 with col2:
-    st.markdown("#### Lineaarne regressioon")
-    fig2, ax2 = plt.subplots(figsize=(6, 4))  # sama suurus
+    st.markdown(f"#### Lineaarne regressioon: {valitud_nimi}")
+    fig2, ax2 = plt.subplots(figsize=(6, 4))
     ax2.plot(df['ds'], df['y'], label='Ajaloolised andmed')
     ax2.plot(future_dates, y_pred, label='Prognoos', color='green')
     ax2.fill_between(future_dates, y_pred_lower, y_pred_upper, color='green', alpha=0.2, label='95% usalduspiir')
-    ax2.set_title('Lineaarse regressiooni prognoos')
+    ax2.set_title(f'{valitud_nimi} lineaarse regressiooni prognoos')
     ax2.legend()
     ax2.grid(True)
     st.pyplot(fig2)
 
 # Võiks tulla ka tööjõuturu näitajate prognoos
-st.subheader("Makromajandusnäitajate prognoos tulevikuks")
+
+st.subheader("Tööjõuturu näitajate prognoos tulevikuks")
 
 if "total_data" not in globals():
     st.error("Andmestik 'total_data' pole defineeritud. Palun lae andmed sisse.")
     st.stop()
 
-# Valik: millise näitaja kohta prognoos luua
-prognoositavad_naidikud = [
-    "netosissetulek", "hoivatute_arv", "mitteaktiivsed",
-    "toohive_maar", "toojoud_ja_mitteaktiivsed", "toojoud_arv",
-    "toojous_osalemine", "tootuse_maar", "tootute_arv", "leibkondade_arv"
-]
+# Sõnastik: kuva -> sisemine väärtus
+naidikud_dict = {
+    "Netosissetulek": "netosissetulek",
+    "Hõivatute arv": "hoivatute_arv",
+    "Mitteaktiivsete arv": "mitteaktiivsed",
+    "Tööhõive määr": "toohive_maar",
+    "Tööjõud ja mitteaktiivsed": "toojoud_ja_mitteaktiivsed",
+    "Tööjõu arv": "toojoud_arv",
+    "Tööjõus osalemise määr": "toojous_osalemine",
+    "Töötuse määr": "tootuse_maar",
+    "Töötute arv": "tootute_arv",
+    "Leibkondade arv": "leibkondade_arv"
+}
 
-valitud_naidik = st.selectbox("Vali näitaja, mille kohta prognoosida", prognoositavad_naidikud)
+# Valik näitaja kuvamiseks
+kuvatav_valik = st.selectbox("Vali näitaja, mille kohta prognoosida", list(naidikud_dict.keys()))
+valitud_naidik = naidikud_dict[kuvatav_valik]
+
+# Maakonna valik
 maakonnad_valikud = ["Kõik maakonnad"] + sorted(total_data["Maakond"].unique())
 valitud_maakond = st.selectbox("Vali maakond", maakonnad_valikud, key="maakond_valik")
 
@@ -722,24 +734,24 @@ lr_model.fit(X, y)
 future_X = aastad_tulevikus.reshape(-1, 1)
 lr_pred = lr_model.predict(future_X)
 
-# Lihtne usaldusintervall (nt ±1.96 * std jääk)
+# Lihtne usaldusintervall
 residuals = y - lr_model.predict(X)
 std_err = np.std(residuals)
 lr_conf_int = 1.96 * std_err
 
-# --- Prognoos 2: SARIMA mudel (statsmodels)
+# --- Prognoos 2: SARIMA mudel
 sarima_model = SARIMAX(df[valitud_naidik], order=(1,1,1), seasonal_order=(0,0,0,0))
 sarima_fit = sarima_model.fit(disp=False)
 sarima_forecast = sarima_fit.get_forecast(steps=prognoos_aastaid)
 sarima_pred = sarima_forecast.predicted_mean
 sarima_ci = sarima_forecast.conf_int()
 
-# --- Ühesuurune y-telg mõlemal graafikul
+# --- Y-telg skaleering
 y_all = np.concatenate([df[valitud_naidik].values, lr_pred, sarima_pred])
 y_min = y_all.min() * 0.95
 y_max = y_all.max() * 1.05
 
-# Kuvame kõrvuti graafikud
+# Kuvame graafikud
 col1, col2 = st.columns(2)
 
 with col1:
@@ -747,13 +759,15 @@ with col1:
     fig1, ax1 = plt.subplots()
     ax1.plot(df["Aasta"], df[valitud_naidik], label="Ajalooline", marker='o')
     ax1.plot(aastad_tulevikus, lr_pred, label="Prognoos", marker='x')
-    ax1.fill_between(aastad_tulevikus.flatten(),
-                     lr_pred - lr_conf_int,
-                     lr_pred + lr_conf_int,
-                     color='orange', alpha=0.3, label="±95% usaldus")
-    ax1.set_title(f"{valitud_naidik.replace('_',' ').capitalize()} - Lineaarregressioon")
+    ax1.fill_between(
+        aastad_tulevikus.flatten(),
+        lr_pred - lr_conf_int,
+        lr_pred + lr_conf_int,
+        color='orange', alpha=0.3, label="±95% usaldus"
+    )
+    ax1.set_title(f"{kuvatav_valik} – Lineaarregressioon")
     ax1.set_xlabel("Aasta")
-    ax1.set_ylabel(valitud_naidik.replace('_',' ').capitalize())
+    ax1.set_ylabel(kuvatav_valik)
     ax1.set_ylim(y_min, y_max)
     ax1.grid(True)
     ax1.legend()
@@ -764,26 +778,53 @@ with col2:
     fig2, ax2 = plt.subplots()
     ax2.plot(df["Aasta"], df[valitud_naidik], label="Ajalooline", marker='o')
     ax2.plot(aastad_tulevikus, sarima_pred, label="Prognoos", marker='x')
-    ax2.fill_between(aastad_tulevikus,
-                     sarima_ci.iloc[:, 0],
-                     sarima_ci.iloc[:, 1],
-                     color='lightblue', alpha=0.4, label="95% usaldus")
-    ax2.set_title(f"{valitud_naidik.replace('_',' ').capitalize()} - SARIMA")
+    ax2.fill_between(
+        aastad_tulevikus,
+        sarima_ci.iloc[:, 0],
+        sarima_ci.iloc[:, 1],
+        color='lightblue', alpha=0.4, label="95% usaldus"
+    )
+    ax2.set_title(f"{kuvatav_valik} – SARIMA")
     ax2.set_xlabel("Aasta")
-    ax2.set_ylabel(valitud_naidik.replace('_',' ').capitalize())
+    ax2.set_ylabel(kuvatav_valik)
     ax2.set_ylim(y_min, y_max)
     ax2.grid(True)
     ax2.legend()
     st.pyplot(fig2)
 
+# --- Kasutajasõbralik nimede kaardistus ---
+# Kaardistused
+hoone_liik_map = {
+    "korter_10_29.99": "Korter 10–29.99m²",
+    "korter_30_40.99": "Korter 30–40.99m²",
+    "korter_41_54.99": "Korter 41–54.99m²",
+    "korter_55_69.99": "Korter 55–69.99m²",
+    "korter_70_249.99": "Korter 70–249.99m²",
+    "Elamu": "Elamu",
+    "Muu": "Muu eluruum",
+    "Suvila": "Suvila"
+}
+
+# Vastupidine kaardistus
+hoone_liik_reverse_map = {v: k for k, v in hoone_liik_map.items()}
+hoone_liik_reverse_map["Kokku"] = "Kokku"
 
 st.subheader("Kinnisvara ruutmeetrihinna prognoos 2025 – Eesti maakondades")
 
 # --- Hoone_liik valik ---
-hoone_liigid = total_data['Hoone_liik'].unique().tolist()
-hoone_liigid.append("Kokku")  # lisame "Kokku" valiku
+hoone_liigid_raw = total_data['Hoone_liik'].unique().tolist()
+hoone_liigid_raw.append("Kokku")  # Lisa "Kokku" valikuna
 
-valitud_hoone = st.selectbox("Vali hooneliik", hoone_liigid)
+# Kuvamisnimekirja loomine
+hoone_liigid_display = [hoone_liik_map.get(x, x) if x != "Kokku" else "Kokku" for x in hoone_liigid_raw]
+
+# Leia "Kokku" indeks kuvamisnimekirjas
+kokku_index = hoone_liigid_display.index("Kokku")
+
+# Kasutaja valik
+valitud_hoone_display = st.selectbox("Vali hooneliik", hoone_liigid_display, index=kokku_index)
+valitud_hoone = hoone_liik_reverse_map[valitud_hoone_display]
+
 
 # --- Andmete ettevalmistus ---
 features = [
@@ -798,13 +839,11 @@ latest_year = df_model['Aasta'].max()
 future_year = 2025
 
 if valitud_hoone != "Kokku":
-    # Kui valiti konkreetne hooneliik, filtreeri tavaliselt
     df_model_filtered = df_model[df_model['Hoone_liik'] == valitud_hoone]
     
     future_data = df_model_filtered[df_model_filtered['Aasta'] == latest_year].copy()
     future_data['Aasta'] = future_year
 
-    # Kategooriate kodeerimine
     le_hoone = LabelEncoder()
     le_maakond = LabelEncoder()
     df_model_filtered['Hoone_liik_enc'] = le_hoone.fit_transform(df_model_filtered['Hoone_liik'])
@@ -812,7 +851,6 @@ if valitud_hoone != "Kokku":
     future_data['Hoone_liik_enc'] = le_hoone.transform(future_data['Hoone_liik'])
     future_data['Maakond_enc'] = le_maakond.transform(future_data['Maakond'])
 
-    # Mudel
     features_enc = features + ['Hoone_liik_enc', 'Maakond_enc', 'Aasta']
     X_train = df_model_filtered[features_enc]
     y_train = df_model_filtered[target]
@@ -827,7 +865,6 @@ if valitud_hoone != "Kokku":
 
     future_data['Predicted_Keskmine_pinnaühikuhind'] = model.predict(X_future_scaled)
 
-    # Hinnamuutuste arvutus
     agg_cols = ['Maakond', 'Hoone_liik']
     hist_means = df_model_filtered[df_model_filtered['Aasta'] == latest_year].groupby(agg_cols)[target].mean().reset_index()
     pred_means = future_data.groupby(agg_cols)['Predicted_Keskmine_pinnaühikuhind'].mean().reset_index()
@@ -837,13 +874,7 @@ if valitud_hoone != "Kokku":
     df_compare['Protsent_muutus'] = 100 * df_compare['Hinna_muutus'] / df_compare[target]
 
 else:
-    # Kui valiti "Kokku", siis arvutame kaalutud keskmise maakonna kaupa
-
-    # Kõik andmed viimase aasta kohta
     hist_latest = df_model[df_model['Aasta'] == latest_year].copy()
-    # Prognoosi tegemiseks tuleb kasutada kõiki hooneliike korraga
-
-    # Kategooriate kodeerimine kõigi hooneliikide ja maakondade jaoks
     le_hoone = LabelEncoder()
     le_maakond = LabelEncoder()
     df_model['Hoone_liik_enc'] = le_hoone.fit_transform(df_model['Hoone_liik'])
@@ -854,7 +885,6 @@ else:
     future_data['Hoone_liik_enc'] = le_hoone.transform(future_data['Hoone_liik'])
     future_data['Maakond_enc'] = le_maakond.transform(future_data['Maakond'])
 
-    # Mudel treenimine kõigi hooneliikide ja maakondadega koos
     features_enc = features + ['Hoone_liik_enc', 'Maakond_enc', 'Aasta']
     X_train = df_model[features_enc]
     y_train = df_model[target]
@@ -869,24 +899,14 @@ else:
 
     future_data['Predicted_Keskmine_pinnaühikuhind'] = model.predict(X_future_scaled)
 
-    # Arvutame kaalutud keskmise maakonna tasandil
-
-    # kaalud on ajalooline keskmine pindala või hulk - siin lihtsuse mõttes kasutame lihtsalt ridade arvu (või võid lisada tegeliku kaalu)
-    # Kuna sul on ainult ruutmeetri hind, kasutame lihtsalt keskmist (kaaludega saab ka lisada)
-
-    # Ajaloolised keskmised
     hist_means = hist_latest.groupby('Maakond')[target].mean().reset_index()
-    # Prognoos
     pred_means = future_data.groupby('Maakond')['Predicted_Keskmine_pinnaühikuhind'].mean().reset_index()
 
     df_compare = hist_means.merge(pred_means, on='Maakond', how='inner')
-
     df_compare['Hinna_muutus'] = df_compare['Predicted_Keskmine_pinnaühikuhind'] - df_compare[target]
     df_compare['Protsent_muutus'] = 100 * df_compare['Hinna_muutus'] / df_compare[target]
+    df_compare['Hoone_liik'] = 'Kokku'
 
-    df_compare['Hoone_liik'] = 'Kokku'  # Lisa veerg "Kokku"
-
-# --- Kõik maakonnad + täitmine ---
 maakonnad = geo_df['MNIMI'].unique()
 if valitud_hoone == "Kokku":
     hoone_liigid_unik = ['Kokku']
@@ -896,7 +916,6 @@ else:
 full_combinations = pd.DataFrame(product(maakonnad, hoone_liigid_unik), columns=['Maakond', 'Hoone_liik'])
 df_full = full_combinations.merge(df_compare, on=['Maakond', 'Hoone_liik'], how='left')
 
-# Täida puuduvaid väärtusi Eesti keskmisega
 mean_pct_change = df_compare['Protsent_muutus'].mean()
 mean_hist_price = df_compare[target].mean()
 
@@ -905,19 +924,15 @@ df_full[target] = df_full[target].fillna(mean_hist_price)
 df_full['Hinna_muutus'] = df_full[target] * df_full['Protsent_muutus'] / 100
 df_full['Predicted_Keskmine_pinnaühikuhind'] = df_full[target] + df_full['Hinna_muutus']
 
-# --- Filtreerimine kaardiks ---
 df_plot = df_full[df_full['Hoone_liik'] == valitud_hoone]
 gdf_plot = geo_df.merge(df_plot, left_on='MNIMI', right_on='Maakond', how='left')
 
-# --- Kaardi joonistamine ---
 fig, ax = plt.subplots(1, 1, figsize=(10, 12))
 gdf_plot.plot(column='Protsent_muutus', cmap='RdYlGn', legend=True, ax=ax,
               legend_kwds={'label': "Ruutmeetri hinna muutus (%) aastani 2025",
                            'orientation': "vertical"},
               missing_kwds={"color": "lightgrey", "label": "Andmed puuduvad"})
 
-ax.set_title(f'Hinnamuutuse prognoos maakonniti hooneliigi "{valitud_hoone}" kohta aastaks {future_year}')
+ax.set_title(f'Hinnamuutuse prognoos maakonniti hooneliigi "{valitud_hoone_display}" kohta aastaks {future_year}')
 ax.axis('off')
 st.pyplot(fig)
-
-
