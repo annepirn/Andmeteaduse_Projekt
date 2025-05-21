@@ -47,16 +47,16 @@ def load_geo():
 hinnastatistika, kv_thi, thi, total_data = load_data()
 geo_df = load_geo()
 
-# 🧼 Andmetöötlus
+# Andmetöötlus
 thi.columns = thi.columns.str.strip().str.lower()
 thi['quarter'] = thi['quarter'].str.strip()
 thi = thi.set_index('quarter')
 thi = thi.sort_index()
 
-# 🎯 Kasutaja valib kvartali
+# Kasutaja valib kvartali
 available_quarters = thi.index[thi.index.get_loc("2022Q1"):]  # alates 2022Q1
 
-# 🎯 Teisendusfunktsioon hoone liikidele
+# Teisendusfunktsioon hoone liikidele
 def teisenda_hooneliik(kood):
     if not isinstance(kood, str):
         return kood
@@ -92,7 +92,7 @@ if valik == "Hetkeolukord":
     selected_q = st.selectbox("Vali kvartal", available_quarters, index=len(available_quarters)-1)
 
     
-    # 🎯 Kasutajasõbralik valik hooneliikide jaoks
+    # Kasutajasõbralik valik hooneliikide jaoks
     hoone_liigid_raw = sorted(kv_thi["Hoone_liik"].dropna().unique())
     hooneliigid_map = {k: teisenda_hooneliik(k) for k in hoone_liigid_raw}
     reverse_map = {v: k for k, v in hooneliigid_map.items()}
@@ -100,7 +100,7 @@ if valik == "Hetkeolukord":
     hoonevalik_nice = st.selectbox("Vali hoone liik", valikuga)
     hoonevalik = reverse_map.get(hoonevalik_nice, "Kokku")
 
-    # 📊 Funktsioon muutuste arvutamiseks
+    # Funktsioon muutuste arvutamiseks
     def calc_percent(current, previous):
         if previous == 0 or pd.isna(previous):
             return None
@@ -139,7 +139,7 @@ if valik == "Hetkeolukord":
             }
         }
 
-    # 🎨 Vormindus protsendimuutustele
+    # Vormindus protsendimuutustele
     def format_change(value):
         if value is None:
             return "–"
@@ -147,7 +147,7 @@ if valik == "Hetkeolukord":
         color = "green" if value > 0 else "red" if value < 0 else "gray"
         return f":{color}[{arrow} {abs(value)}%]"
 
-    # 👉 Arvuta muutused
+    # Arvuta muutused
     changes = calculate_changes(thi, selected_q)
 
     # Andmete filtreerimine
@@ -193,7 +193,7 @@ if valik == "Hetkeolukord":
         st.markdown("Muutus aasta tagusega")
         st.markdown(format_change(changes['housing_index']['prev_year']))
 
-    # 🗺️ Kaardi pealkiri
+    # Kaardi pealkiri
     hoone_nimi = hoonevalik_nice if hoonevalik != "Kokku" else "Kõik hooneliigid"
     pealkiri_kv = f"{hoone_nimi} keskmine ruutmeetri hind maakonniti, {selected_q}"
 
@@ -380,7 +380,7 @@ elif valik == "Muutused ajas":
     st.write("Vaata kinnisvara hindasid mõjutavate näitajate muutumise trende ajateljel.")
     st.markdown(f"## Muutused ajas - trendid")
 
-    # 📈 Visualiseerime THI, brutokuupalga ja eluasemehinnaindeksi muutust ajas
+    # Visualiseerime THI, brutokuupalga ja eluasemehinnaindeksi muutust ajas
     st.subheader("Bruto kuupalga, tarbijahinnaindeksi ja eluaseme hinnaindeksi muutus ajas")
 
     # Kui sul on netosissetulek total_data-s, siis pead selle kõigepealt arvutama kvartalite lõikes:
