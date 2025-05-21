@@ -1,0 +1,8 @@
+g++ 
+build-essential 
+python3-dev 
+gfortran 
+libgdal-dev 
+libproj-dev 
+libgeos-dev 
+libspatialindex-dev

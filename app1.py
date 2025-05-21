@@ -955,13 +955,27 @@ elif valik == "Prognoosid":
     df_plot = df_full[df_full['Hoone_liik'] == valitud_hoone]
     gdf_plot = geo_df.merge(df_plot, left_on='MNIMI', right_on='Maakond', how='left')
 
-    fig, ax = plt.subplots(1, 1, figsize=(10, 12))
-    gdf_plot.plot(column='Protsent_muutus', cmap='RdYlGn', legend=True, ax=ax,
-                legend_kwds={'label': "Ruutmeetri hinna muutus (%) aastani 2025",
-                            'orientation': "vertical"},
-                missing_kwds={"color": "lightgrey", "label": "Andmed puuduvad"})
+    pealkiri_kv = f"Hinnamuutuse prognoos maakonniti hooneliigi \"{valitud_hoone_display}\" kohta aastaks {future_year}"
 
-    ax.set_title(f'Hinnamuutuse prognoos maakonniti hooneliigi "{valitud_hoone_display}" kohta aastaks {future_year}')
-    ax.axis('off')
-    st.pyplot(fig)
+    fig = px.choropleth_mapbox(
+        gdf_plot,
+        geojson=gdf_plot.geometry.__geo_interface__,
+        locations=gdf_plot.index,  # kasutame indeksi põhist asukohta
+        color="Predicted_Keskmine_pinnaühikuhind",
+        hover_name="Maakond_x",  # siin muuda vastavalt oma DataFrame'ile
+        mapbox_style="carto-positron",
+        center={"lat": 58.5953, "lon": 25.0136},
+        zoom=5.5,
+        opacity=0.7,
+        color_continuous_scale="Viridis",
+        labels={"Predicted_Keskmine_pinnaühikuhind": "€/m²"}
+    )
+
+    fig.update_layout(
+        title_text=pealkiri_kv,
+        title_x=0.3,
+        margin={"r": 0, "t": 40, "l": 0, "b": 0}
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
