@@ -10,6 +10,8 @@ Hüpoteesid:
 
 ### Andmed
 
+Kõik puhastatud ning töölaual kasutatud failid on toodud [Data andmekaustas](https://github.com/annepirn/Andmeteaduse_Projekt/tree/main/Data) . 
+
 Andmete saaamiseks kasutati Eesti Statistikaameti API võimalus ning kasutati järgnevaid andmetabeleid:
 Tarbijahinnaindeks: https://andmed.stat.ee/et/stat/majandus__hinnad/IA02
 
@@ -38,4 +40,20 @@ Iga muudatuse järel prinditi välja tulemused, et kontrollida, kas see samm lä
 
 
 ### Andmete visualiseerimine
+
+Andmete visualiseerimiseks kasutati streamlit.app töövahendit. 
+Näidatakse hetkeolukorda, muutuseid ajas ning prognoose. 
+
+Muudatuste jaoks defineeriti käesolev ajaühik, eelmine ajaühik ning year to date. Seejärel arvutati muutus kvartalis tarbija hinnaindeksi, keskmise brotopalga ning eluaseme hinnaindeksi jaoks.  
+
+Visualiseerimiseks maakonniti kasutati [maakonnad.geojson](https://github.com/annepirn/Andmeteaduse_Projekt/blob/main/maakonnad.geojson) faili. 
+
+Samuti loodi aasta filter ning muudatustele illustreerimiseks pandi juurde nooremärgised ning värvid. 
+
+Muudatuste kuvamiseks loodi algkvartlai filter ning lõpp-kvartali filter. Samuti loodi hoone liigi filter, millega saab valida, kas tegu on majaga ning korteri puhul suuruse. 
+
+Juhul kui miskit ei kuvata, kuvab töölaud sõnumi "Mõned aastad jäeti välja" ning annab ka märku, mitu juhtumit välja arvestati.
+
+Jooniste loomisel võetakse arvesse valitud filtreid. Joonisteks kasutatakse joondiagramme, et näidata, kas seos uuritud näitaja ja aja vahel on lineaarne ning täpsemaks vaateks kasutatakse Eesti kaarti, millele on lisatud heatmap. 
+
 
