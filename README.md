@@ -28,4 +28,14 @@ Faili ülesehitus:
 Aasta{"2018","2019","2020","2021","2022","2023","2024",”2025”}, Kvartal{“I”,”II”,”III”,”IV”}, Hoone liik{“korter_10_29.99”,”korter_30_40.99”,”korter_41_54.99”,”korter_55_69.99”,”korter_70_249.99”,””Elamu”,”Suvila”,”Muu”}, näitajad {“Korteriomanditeginute_Arv”, “Keskmine_m2”,”Kokku_tehinguhind”,”Minimaalne_tehingusumma”,”Maksimaalne_tehingsumma”,”Minimaalne_pinnaühikuhind”,”Maksimaalne_pinnaühikuhind”,”Mediaan_pinnaühikuhind”,”Keskmine_pinnaühikuhind”,”Standardhälve_pinnaühikuhind”} 
 
 
+### Andmete teisendused
+Andmetes esinevad kuunimed teisendati eestikeelsele kujule ning kvartaalse info puhul tehti kindlaks, et oleks olemas veerg, kus on esindatud nii kvartali number kui aasta number. 
+Kuud olid algtabelis eraldi veergudena, need teisendati üheks kuuveeruks.
+Puuduvate väärtuste veerud asendati NaN-iga.
+Filtreeriti välja ainult maakonnad, mis päriselt eksisteerivad. 
+
+Iga muudatuse järel prinditi välja tulemused, et kontrollida, kas see samm läks õigesti. 
+
+
+### Andmete visualiseerimine
 
