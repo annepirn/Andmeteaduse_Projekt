@@ -377,7 +377,7 @@ if valik == "Hetkeolukord":
 
 elif valik == "Muutused ajas":
     st.header("📈 Muutused ajas")
-    st.write("Vaata rahvastiku muutumise trende ajateljel.")
+    st.write("Vaata kinnisvara hindasid mõjutavate näitajate muutumise trende ajateljel.")
     st.markdown(f"## Muutused ajas - trendid")
 
     # 📈 Visualiseerime THI, brutokuupalga ja eluasemehinnaindeksi muutust ajas
