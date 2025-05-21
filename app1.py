@@ -68,7 +68,7 @@ def teisenda_hooneliik(kood):
 
 
 # Dashboardi nimi ja üldine selgitus
-st.title("Kinnisvara hindade muuutuste analüüsi Dashboard")
+st.title("Kinnisvara hindade muutuste analüüsi Dashboard")
 st.markdown("""
 See rakendus võimaldab uurida kinnisvara hindade muutumise põhjuseid Eestis erinevate vaadete lõikes:
 * **Hetkeolukord** – vaata viimase aasta andmeid
