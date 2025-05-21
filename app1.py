@@ -344,7 +344,7 @@ if valik == "Hetkeolukord":
     fig.update_layout(
         title_text=pealkiri,
         title_x=0.5,  # Keskenda pealkiri
-        margin={"r": 0, "t": 40, "l": 0, "b": 0}
+        margin={"r": 0, "t": 30, "l": 0, "b": 0}
     )
 
     # Kuvame kaardi Streamlitis
