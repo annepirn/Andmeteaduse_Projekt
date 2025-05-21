@@ -961,19 +961,19 @@ elif valik == "Prognoosid":
         gdf_plot,
         geojson=gdf_plot.geometry.__geo_interface__,
         locations=gdf_plot.index,  # kasutame indeksi põhist asukohta
-        color="Predicted_Keskmine_pinnaühikuhind",
+        color="Protsent_muutus",
         hover_name="Maakond_x",  # siin muuda vastavalt oma DataFrame'ile
         mapbox_style="carto-positron",
         center={"lat": 58.5953, "lon": 25.0136},
         zoom=5.5,
         opacity=0.7,
         color_continuous_scale="Viridis",
-        labels={"Predicted_Keskmine_pinnaühikuhind": "€/m²"}
+        labels={"Protsent_muutus": "%"}
     )
 
     fig.update_layout(
         title_text=pealkiri_kv,
-        title_x=0.3,
+        title_x=0.1,
         margin={"r": 0, "t": 40, "l": 0, "b": 0}
     )
 
