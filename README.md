@@ -1,12 +1,40 @@
 # Andmeteaduse_Projekt
+Autorid: Anne Pirn, Tõnis Reinik, Mirjam Reino
 
-Projekti eesmärk: Uurida, kuidas on seotud kinnisvara hinnad, inflatsioon, keskmine tööhõive ja keskmine palk. Seejärel koostada mudel, mis ennustaks (regressioonmudel), kuidas mõjutavad üksteist inflatsiooni, keskmise ruutmeetri hinna ja keskmise palga muutused.
+## Eesmärk
+Uurida, kuidas on seotud kinnisvara hinnad, inflatsioon, keskmine tööhõive ja keskmine palk. Seejärel koostada mudel, mis ennustaks (regressioonmudel), kuidas mõjutavad üksteist inflatsiooni, keskmise ruutmeetri hinna ja keskmise palga muutused. 
+Samuti luuakse 3-osaline töölaud:
+### 1. **Hetkeolukord**
+- Kuvab viimase kvartali andmed (THI, brutopalk, eluasemehinnaindeks).
+- Maakondade võrdlus kaardil: €/m² ruutmeetrihinnad hooneliikide lõikes.
+- Tööjõuturu ülevaade (nt töötuse määr, leibkondade arv).
 
-Hüpoteesid:
+### 2. **Muutused ajas**
+- Ajalooliste trendide visualiseerimine kvartalite kaupa.
+- Võrdlus brutopalga ja eluasemeindeksi vahel.
+- Maakondade korrelatsioonid valitud tunnuste vahel ajas.
+
+### 3. **Prognoosid**
+- Prophet ja lineaarne regressioon näitajate (THI, brutopalk, hinnaindeks) tulevikutrendide ennustamiseks.
+- SARIMA vs. regressioon prognoos tööjõu- ja majandusnäitajatele.
+- Maakondade hinnaennustused hooneliikide lõikes aastaks 2025.
+
+## Hüpoteesid
 
 1. Keskmine kinnisvara ruutmeetrihind liigub keskmise palgaga positiivses korrelatsioonis.
 2. Keskmine palk on korrelatsioonis tööhõive ja inflatsiooniga.
 3. Laenuportfelli kvaliteeti mõjutab kinnisvara hinnast, keskmisest palgast ja tööhõivest kõige rohkem tööhõive.
+
+### Kasutatud tehnoloogiad
+- **[Streamlit](https://streamlit.io/)** – interaktiivne veebirakendus
+- **Pandas / Numpy / GeoPandas** – andmetöötlus
+- **Matplotlib / Seaborn / Plotly** – visualiseerimine
+- **scikit-learn / statsmodels / Prophet** – mudelid ja prognoosimine
+- **Mapbox** – interaktiivsed kaardid
+
+### Nõuded
+Enne jooksutamist, paigalda vajalikud sõltuvused:
+pip install -r requirements.txt 
 
 ### Andmed
 
@@ -21,7 +49,7 @@ Keskmine palk: https://andmed.stat.ee/et/stat/sotsiaalelu__sissetulek/ST14
 
 Registreeritud töötud:  https://andmed.stat.ee/et/stat/sotsiaalelu__tooturg__tooturu-uldandmed__aastastatistika/TT4645
 
-Kinnisvara hindade saamikseks laaditi maa-ameti kodulehelt alla hinnastatistika korteritele ning eluhoonetele:
+Kinnisvara hindade saamikseks laaditi maa-ameti kodulehelt alla hinnastatistika korteritele ning eluhoonetele, valiti aastad 2018-2024:
 https://www.maaamet.ee/kinnisvara/htraru/
 
 Fail: Kinnisvara-hinnastatistika-2018-2024.csv
