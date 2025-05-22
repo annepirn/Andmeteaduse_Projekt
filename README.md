@@ -23,7 +23,6 @@ Samuti luuakse 3-osaline töölaud:
 
 1. Keskmine kinnisvara ruutmeetrihind liigub keskmise palgaga positiivses korrelatsioonis.
 2. Keskmine palk on korrelatsioonis tööhõive ja inflatsiooniga.
-3. Laenuportfelli kvaliteeti mõjutab kinnisvara hinnast, keskmisest palgast ja tööhõivest kõige rohkem tööhõive.
 
 ### Kasutatud tehnoloogiad
 - **[Streamlit](https://streamlit.io/)** – interaktiivne veebirakendus
